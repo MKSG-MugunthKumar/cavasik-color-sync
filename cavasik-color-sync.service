@@ -1,0 +1,18 @@
+[Unit]
+Description=Cavasik Color Sync - Sync visualizer colors with album art
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/dev/MKSG/oss/cavasik-dbus/cavasik-color-sync.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=DISPLAY=:0
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
+
+[Install]
+WantedBy=default.target
