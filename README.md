@@ -1,6 +1,6 @@
-# Cavasik Color Sync
+# Cavasik Color Sync - Project Overview
 
-Automatically synchronizes Cavasik visualizer colors with currently playing music's album art in real-time.
+A Python script and a service that automatically synchronizes the Cavasik audio visualizer colors with the currently playing music's album artwork in real-time using DBus communication.
 
 ## Features
 
@@ -14,7 +14,15 @@ Automatically synchronizes Cavasik visualizer colors with currently playing musi
 
 - Python 3
 - Cavasik (Flatpak recommended) with DBus colors enabled
-- MPRIS2-compatible media player
+- MPRIS2-compatible media player (Plex, Spotify, VLC, etc.)
+
+## Dependencies
+
+- `dbus-python`: DBus communication
+- `PyGObject`: GLib event loop integration
+- `colorthief`: Color palette extraction
+- `Pillow`: Image processing
+- `requests`: HTTP album art fetching
 
 ## Quick Start
 
@@ -57,7 +65,75 @@ The script runs in the background and updates colors when:
 - A new track starts playing
 - Album art changes
 
-## Configuration
+## Technical Implementation
+
+### Core Technologies
+- **DBus**: Inter-process communication for MPRIS2 media player monitoring and Cavasik control
+- **MPRIS2**: Standard media player interface for reading track metadata
+- **ColorThief**: Color palette extraction from album artwork
+- **Python GObject/GLib**: Event loop and DBus integration
+- **HSV Color Manipulation**: Advanced color transformations for aesthetic schemes
+
+### Color Scheme Implementation
+
+**Challenge**: Simple darkening of colors looked visually unappealing.
+
+**Solution**: Implemented 4 distinct color schemes using HSV color space manipulation:
+- **Dominant BG**: Solid background from most dominant color
+- **Neon**: Complementary hue-shifted backgrounds for cyberpunk aesthetic
+- **Black BG**: Pure black for maximum contrast
+- **Gradient Reverse**: Inverted palette creates depth
+
+Each scheme manipulates colors in HSV space for better perceptual results:
+
+```python
+# Example: Neon scheme
+h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
+h = (h + 0.5) % 1.0    # Shift to complementary hue
+s = 0.6                 # Keep saturation for colored effect
+v = 0.08                # Very dark
+```
+
+Benefits of HSV manipulation:
+- Independent control of hue, saturation, brightness
+- Perceptually uniform adjustments
+- Easy hue shifting for complementary colors
+
+### Cavasik DBus Interface
+
+**Service**: `io.github.TheWisker.Cavasik`
+**Object Path**: `/io/github/TheWisker/Cavasik`
+
+**Methods**:
+- `set_fg_colors(path: str) -> bool` - Set foreground colors
+- `set_bg_colors(path: str) -> bool` - Set background colors
+
+**Requirements**:
+1. `dbus-colors` gsetting must be `true`
+2. File path must be accessible to Flatpak sandbox
+3. File must be in RGB format (R,G,B per line)
+4. Return value indicates success/failure
+
+### MPRIS2 Integration
+
+Monitors `org.freedesktop.DBus.Properties.PropertiesChanged` signal on `/org/mpris/MediaPlayer2` path.
+
+**Key Metadata**:
+- `xesam:title` - Track title
+- `mpris:artUrl` - Album art URL (can be `file://` or `http://`)
+
+### Configuration System
+
+The script uses a dual-layer configuration:
+
+1. **COLOR_SCHEME**: String selector for active scheme
+2. **SETTINGS**: Dict with per-scheme tunable parameters
+
+This allows users to:
+- Quickly switch schemes by changing one variable
+- Fine-tune individual scheme parameters without understanding color math
+- Create custom variations easily
+
 
 The script uses a YAML configuration file located at:
 - `$XDG_CONFIG_HOME/cavasik-color-sync/config.yaml` (usually `~/.config/cavasik-color-sync/config.yaml`)
@@ -75,25 +151,6 @@ You can edit this file to change your preferred color scheme. Valid options:
 - `gradient_reverse`
 
 Command-line arguments always override the config file.
-
-## Directory Structure
-
-The script uses the following directories:
-
-```
-~/.config/cavasik-color-sync/
-└── config.yaml                    # Configuration file
-
-~/.var/app/io.github.TheWisker.Cavasik/data/
-├── cavasik_fg_colors.rgb         # Foreground color file (for Flatpak Cavasik)
-└── cavasik_bg_colors.rgb         # Background color file (for Flatpak Cavasik)
-
-/tmp/cavasik-color-sync/
-├── album_art/                     # Downloaded album art cache
-│   └── cover_*.jpg
-└── cavasik-sync.log              # Log file
-```
-
 **Note:** Album art and logs are stored in `/tmp/cavasik-color-sync/` which is automatically cleaned on system reboot.
 
 ## Customization
@@ -345,6 +402,18 @@ Each line contains comma-separated R,G,B values (0-255).
 
 ## Testing
 
+### test-dbus.py
+Validates:
+- DBus connection to Cavasik
+- Color file format and accessibility
+- Method call success/failure
+
+### alternative_color_schemes.py
+- Examples of all color scheme implementations
+- Standalone testing without running full script
+- Educational reference for custom schemes
+
+
 Test the DBus connection and color setting:
 
 ```bash
@@ -362,7 +431,22 @@ busctl --user call io.github.TheWisker.Cavasik \
 
 This should return `b true` if successful.
 
-## Troubleshooting
+## Troubleshooting and Debugging Tips
+
+**Issue**: Returns `false` on DBus calls
+- Check: `dbus-colors` setting enabled
+- Check: File path accessible to Flatpak
+- Check: File format is RGB (not XML/hex)
+
+**Issue**: No color changes on track change
+- Check: MPRIS2 player is detected (`busctl --user list | grep mpris`)
+- Check: Album art URL is present in metadata
+- Monitor: `dbus-monitor --session "interface='org.mpris.MediaPlayer2.Player'"`
+
+**Issue**: Script crashes on color extraction
+- Check: Network connectivity (for HTTP album art)
+- Check: Image format is supported by Pillow
+- Check: File permissions for local album art
 
 ### Enable DBus Colors in Cavasik
 
@@ -448,3 +532,19 @@ sudo dnf install d-feet  # Fedora
 d-feet  # Launch GUI to browse DBus services
 ```
 
+## Future Enhancements
+
+1. Command-line arguments for scheme selection
+2. Real-time scheme switching via DBus interface
+3. Per-genre color scheme preferences
+4. Smooth color transitions between tracks
+5. Integration with pywal for system-wide theming
+
+## Credits
+
+Developed as an open-source integration tool for Cavasik.
+
+**Cavasik**: https://github.com/TheWisker/Cavasik
+**MPRIS2 Specification**: https://specifications.freedesktop.org/mpris-spec/latest/
+
+---
