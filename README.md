@@ -2,6 +2,10 @@
 
 A Python script and a service that automatically synchronizes the Cavasik audio visualizer colors with the currently playing music's album artwork in real-time using DBus communication.
 
+## Demo
+
+https://github.com/user-attachments/assets/demo.webm
+
 ## Features
 
 - Monitors MPRIS2-compatible media players (Spotify, VLC, etc.)
