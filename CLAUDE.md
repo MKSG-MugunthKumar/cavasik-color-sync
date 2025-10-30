@@ -22,6 +22,7 @@ cavasik-color-sync/
 ├── cavasik-color-sync.py       # Main script
 ├── test-dbus.py                # DBus testing utility
 ├── cavasik-color-sync.service  # Systemd user service file
+├── Makefile                    # Task automation and management
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # User documentation
 ├── CLAUDE.md                   # AI development context (this file)
@@ -34,6 +35,10 @@ cavasik-color-sync/
 
 2. **Install Dependencies**:
    ```bash
+   # Using Makefile (recommended)
+   make install
+
+   # Or manually
    pip install -r requirements.txt
    ```
 
@@ -41,11 +46,52 @@ cavasik-color-sync/
    - DBus (usually pre-installed on Linux)
    - Cavasik (Flatpak recommended)
    - MPRIS2-compatible media player
+   - GNU Make (for Makefile targets)
 
 4. **Testing Setup**:
-   - Ensure Cavasik is running with DBus colors enabled
-   - Start a media player (Spotify, VLC, etc.)
-   - Run the script: `python cavasik-color-sync.py`
+   ```bash
+   # Enable DBus colors
+   make enable-cavasik-dbus
+
+   # Test connection
+   make test-dbus
+
+   # Run the script
+   make run
+   ```
+
+## Makefile Automation
+
+The project includes a comprehensive Makefile for common development tasks:
+
+### Key Makefile Targets
+
+**Development:**
+- `make install` - Install dependencies and display setup instructions
+- `make run` - Run script with default config
+- `make run-scheme SCHEME=<name>` - Run with specific color scheme
+- `make test` - Run all tests
+- `make list-schemes` - List available color schemes
+
+**Service Management:**
+- `make service-install` - Install systemd user service (auto-updates script path)
+- `make service-start/stop/restart` - Control the service
+- `make service-status` - Check service status
+- `make service-logs` - View real-time logs
+
+**Utilities:**
+- `make enable-cavasik-dbus` - Enable DBus colors in Cavasik (Flatpak)
+- `make clean` - Remove temporary files
+
+### Makefile Design Notes
+
+1. **Path Substitution**: The `service-install` target automatically updates the service file with the correct script path using `sed`, eliminating manual editing.
+
+2. **Error Handling**: Commands include fallback messages and error checks (e.g., flatpak availability check).
+
+3. **User-Friendly**: All targets include informative echo messages and next-step suggestions.
+
+4. **PHONY Targets**: All targets are marked `.PHONY` to prevent conflicts with files of the same name.
 
 ## Code Architecture
 
@@ -124,10 +170,14 @@ To add a new color scheme:
 ### Manual Testing
 
 ```bash
-# Test DBus connection
-python test-dbus.py
+# Test DBus connection (using Makefile)
+make test-dbus
 
-# Test with specific scheme
+# Test with specific scheme (using Makefile)
+make run-scheme SCHEME=neon
+
+# Or run directly
+python test-dbus.py
 python cavasik-color-sync.py --scheme neon
 
 # Monitor DBus traffic

@@ -26,6 +26,31 @@ A Python script and a service that automatically synchronizes the Cavasik audio 
 
 ## Quick Start
 
+### Using Makefile (Recommended)
+
+```bash
+# 1. Install dependencies
+make install
+
+# 2. Enable DBus colors in Cavasik
+make enable-cavasik-dbus
+
+# 3. Test the connection
+make test-dbus
+
+# 4. Run the script
+make run
+
+# Or run with a specific color scheme
+make run-scheme SCHEME=neon
+
+# 5. (Optional) Install as systemd service
+make service-install
+make service-start
+```
+
+### Manual Installation
+
 1. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
@@ -64,6 +89,41 @@ A Python script and a service that automatically synchronizes the Cavasik audio 
 The script runs in the background and updates colors when:
 - A new track starts playing
 - Album art changes
+
+## Makefile Commands
+
+The project includes a Makefile for convenient task management. Run `make help` to see all available commands.
+
+### Common Tasks
+
+| Command | Description |
+|---------|-------------|
+| `make help` | Show all available commands |
+| `make install` | Install dependencies and setup |
+| `make run` | Run with default config |
+| `make run-scheme SCHEME=neon` | Run with specific color scheme |
+| `make list-schemes` | List all available color schemes |
+| `make test-dbus` | Test DBus connection |
+
+### Service Management
+
+| Command | Description |
+|---------|-------------|
+| `make service-install` | Install as systemd user service |
+| `make service-start` | Start the service |
+| `make service-stop` | Stop the service |
+| `make service-restart` | Restart the service |
+| `make service-status` | Check service status |
+| `make service-logs` | View real-time service logs |
+| `make service-uninstall` | Uninstall the service |
+
+### Utilities
+
+| Command | Description |
+|---------|-------------|
+| `make enable-cavasik-dbus` | Enable DBus colors in Cavasik (Flatpak) |
+| `make run-bg` | Run in background using nohup |
+| `make clean` | Clean temporary cache files |
 
 ## Technical Implementation
 
@@ -546,5 +606,10 @@ Developed as an open-source integration tool for Cavasik.
 
 **Cavasik**: https://github.com/TheWisker/Cavasik
 **MPRIS2 Specification**: https://specifications.freedesktop.org/mpris-spec/latest/
+
+## License
+
+This project uses **GPL-3.0-or-later** to align with Cavasik's licensing.
+See [LICENSE](LICENSE) file for full text.
 
 ---
