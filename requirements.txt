@@ -3,3 +3,4 @@ PyGObject
 colorthief
 Pillow
 requests
+PyYAML

@@ -1,6 +1,6 @@
-# Cavasik DBus Color Sync
+# Cavasik Color Sync
 
-Automatically synchronizes Cavasik visualizer colors with currently playing music's album art.
+Automatically synchronizes Cavasik visualizer colors with currently playing music's album art in real-time.
 
 ## Features
 
@@ -29,10 +29,10 @@ Automatically synchronizes Cavasik visualizer colors with currently playing musi
 
 3. **Run the script:**
    ```bash
-   # Use default color scheme (dominant_bg)
+   # Use default color scheme from config file
    python cavasik-color-sync.py
 
-   # Or choose a specific scheme
+   # Or choose a specific scheme (overrides config)
    python cavasik-color-sync.py --scheme neon
    python cavasik-color-sync.py -s black_bg
 
@@ -40,34 +40,88 @@ Automatically synchronizes Cavasik visualizer colors with currently playing musi
    python cavasik-color-sync.py --list-schemes
    ```
 
-4. **Play music!** The visualizer colors will automatically match your album art.
+4. **Run in background:**
+   ```bash
+   # Using nohup
+   nohup python3 cavasik-color-sync.py &
+
+   # Or install as systemd service
+   cp cavasik-color-sync.service ~/.config/systemd/user/
+   systemctl --user daemon-reload
+   systemctl --user enable --now cavasik-color-sync.service
+   ```
+
+5. **Play music!** The visualizer colors will automatically match your album art.
 
 The script runs in the background and updates colors when:
 - A new track starts playing
 - Album art changes
 
+## Configuration
+
+The script uses a YAML configuration file located at:
+- `$XDG_CONFIG_HOME/cavasik-color-sync/config.yaml` (usually `~/.config/cavasik-color-sync/config.yaml`)
+
+The config file is automatically created on first run with default settings:
+
+```yaml
+color_scheme: dominant_bg
+```
+
+You can edit this file to change your preferred color scheme. Valid options:
+- `dominant_bg` (default)
+- `neon`
+- `black_bg`
+- `gradient_reverse`
+
+Command-line arguments always override the config file.
+
+## Directory Structure
+
+The script uses the following directories:
+
+```
+~/.config/cavasik-color-sync/
+└── config.yaml                    # Configuration file
+
+~/.var/app/io.github.TheWisker.Cavasik/data/
+├── cavasik_fg_colors.rgb         # Foreground color file (for Flatpak Cavasik)
+└── cavasik_bg_colors.rgb         # Background color file (for Flatpak Cavasik)
+
+/tmp/cavasik-color-sync/
+├── album_art/                     # Downloaded album art cache
+│   └── cover_*.jpg
+└── cavasik-sync.log              # Log file
+```
+
+**Note:** Album art and logs are stored in `/tmp/cavasik-color-sync/` which is automatically cleaned on system reboot.
+
 ## Customization
 
-### Quick Start - Command Line
+### Changing Color Schemes
 
-Choose your color scheme via command-line arguments:
+There are three ways to set your color scheme:
 
-```bash
-# Use neon cyberpunk style
-python cavasik-color-sync.py --scheme neon
+1. **Edit the config file** (persistent, recommended):
+   ```bash
+   # Edit ~/.config/cavasik-color-sync/config.yaml
+   nano ~/.config/cavasik-color-sync/config.yaml
+   ```
+   Change `color_scheme: dominant_bg` to your preferred scheme.
 
-# Use black background
-python cavasik-color-sync.py -s black_bg
+2. **Use command-line arguments** (temporary override):
+   ```bash
+   # Use neon cyberpunk style
+   python cavasik-color-sync.py --scheme neon
 
-# List all available schemes with descriptions
-python cavasik-color-sync.py --list-schemes
-```
+   # Use black background
+   python cavasik-color-sync.py -s black_bg
+   ```
 
-Or edit line 29 in `cavasik-color-sync.py` to set a permanent default:
-
-```python
-COLOR_SCHEME = "dominant_bg"  # or "neon", "black_bg", "gradient_reverse"
-```
+3. **List all available schemes with descriptions**:
+   ```bash
+   python cavasik-color-sync.py --list-schemes
+   ```
 
 ### Available Color Schemes
 
@@ -249,17 +303,20 @@ All schemes use HSV (Hue, Saturation, Value) color space for transformations:
 
 ## How it works
 
-1. Listens for MPRIS2 `PropertiesChanged` signals on DBus
-2. Extracts track metadata including album art URL
-3. Downloads/reads the cover art image
-4. Extracts a 5-color palette using ColorThief
-5. Creates RGB color files (one color per line: `R,G,B` format)
+1. Loads configuration from `~/.config/cavasik-color-sync/config.yaml`
+2. Listens for MPRIS2 `PropertiesChanged` signals on DBus
+3. Extracts track metadata including album art URL
+4. Downloads/reads the cover art image to `/tmp/cavasik-color-sync/album_art/`
+5. Extracts a 5-color palette using ColorThief
+6. Applies the selected color scheme transformation (dominant_bg, neon, black_bg, or gradient_reverse)
+7. Creates RGB color files (one color per line: `R,G,B` format)
    - Foreground: `~/.var/app/io.github.TheWisker.Cavasik/data/cavasik_fg_colors.rgb`
-   - Background: `~/.var/app/io.github.TheWisker.Cavasik/data/cavasik_bg_colors.rgb` (30% darker)
+   - Background: `~/.var/app/io.github.TheWisker.Cavasik/data/cavasik_bg_colors.rgb`
    - (Uses Flatpak-accessible directory for compatibility)
-6. Sends colors to Cavasik via its DBus interface:
+8. Sends colors to Cavasik via its DBus interface:
    - `io.github.TheWisker.Cavasik.set_fg_colors(path)`
    - `io.github.TheWisker.Cavasik.set_bg_colors(path)`
+9. Logs all operations to `/tmp/cavasik-color-sync/cavasik-sync.log`
 
 ## Cavasik DBus Interface
 
@@ -330,6 +387,20 @@ Should return `true`. If not, enable it in Cavasik preferences.
 - **No color changes**: Ensure Cavasik is running before starting the script
 - **Script not responding**: Check that your media player supports MPRIS2 (most modern players do)
 - **File not found errors**: Check album art URL and network connectivity
+- **Check the log file**: View `/tmp/cavasik-color-sync/cavasik-sync.log` for detailed error messages
+
+### Viewing Logs
+
+```bash
+# View the log file
+cat /tmp/cavasik-color-sync/cavasik-sync.log
+
+# Follow log in real-time
+tail -f /tmp/cavasik-color-sync/cavasik-sync.log
+
+# View systemd service logs
+journalctl --user -u cavasik-color-sync.service -f
+```
 
 ### Flatpak File Access
 

@@ -9,18 +9,77 @@ from io import BytesIO
 import colorsys
 import argparse
 import sys
+import yaml
+import hashlib
 
 DBusGMainLoop(set_as_default=True)
 
 # For Flatpak Cavasik, use a path accessible to the sandbox
 # For system Cavasik, /tmp works fine
 import os
+import datetime
 
+# Create working directory for all temporary files
+WORK_DIR = "/tmp/cavasik-color-sync"
+os.makedirs(WORK_DIR, exist_ok=True)
+
+# For Flatpak, still need to use Flatpak data dir for color files
 FLATPAK_DATA_DIR = os.path.expanduser("~/.var/app/io.github.TheWisker.Cavasik/data")
 os.makedirs(FLATPAK_DATA_DIR, exist_ok=True)
 
+# Color files in Flatpak directory (Cavasik needs access to these)
 FG_COLOR_FILE = os.path.join(FLATPAK_DATA_DIR, "cavasik_fg_colors.rgb")
 BG_COLOR_FILE = os.path.join(FLATPAK_DATA_DIR, "cavasik_bg_colors.rgb")
+
+# Album art cache in /tmp/cavasik-dbus
+ALBUM_ART_DIR = os.path.join(WORK_DIR, "album_art")
+os.makedirs(ALBUM_ART_DIR, exist_ok=True)
+
+# Log file in /tmp/cavasik-dbus
+LOG_FILE = os.path.join(WORK_DIR, "cavasik-sync.log")
+
+# Config file location
+XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+CONFIG_DIR = os.path.join(XDG_CONFIG_HOME, "cavasik-color-sync")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.yaml")
+
+def log(message):
+    """Log messages to both console and log file"""
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_message = f"[{timestamp}] {message}"
+    print(log_message)
+    try:
+        with open(LOG_FILE, "a") as f:
+            f.write(log_message + "\n")
+    except Exception as e:
+        print(f"Error writing to log file: {e}")
+
+def load_config():
+    """Load configuration from YAML file"""
+    default_config = {
+        "color_scheme": "dominant_bg"
+    }
+
+    if not os.path.exists(CONFIG_FILE):
+        # Create default config
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(CONFIG_FILE, "w") as f:
+            yaml.dump(default_config, f, default_flow_style=False)
+        log(f"Created default config at {CONFIG_FILE}")
+        return default_config
+
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            config = yaml.safe_load(f)
+            if config is None:
+                config = default_config
+            # Ensure color_scheme exists
+            if "color_scheme" not in config:
+                config["color_scheme"] = "dominant_bg"
+            return config
+    except Exception as e:
+        log(f"Error loading config: {e}, using defaults")
+        return default_config
 
 # ==================== CONFIGURATION ====================
 # Choose your color scheme style:
@@ -63,6 +122,11 @@ SETTINGS = {
 def extract_colors(image_path_or_url):
     """Extract color palette from cover art"""
     try:
+        # Generate a unique filename based on the URL/path
+        url_hash = hashlib.md5(image_path_or_url.encode()).hexdigest()[:12]
+        temp_path = os.path.join(ALBUM_ART_DIR, f"cover_{url_hash}.jpg")
+
+        # Download/copy image
         if image_path_or_url.startswith("http"):
             response = requests.get(image_path_or_url, timeout=5)
             img = Image.open(BytesIO(response.content))
@@ -70,7 +134,7 @@ def extract_colors(image_path_or_url):
             path = image_path_or_url.replace("file://", "")
             img = Image.open(path)
 
-        temp_path = "/tmp/cover_temp.jpg"
+        # Save to our working directory
         img.save(temp_path)
 
         color_thief = ColorThief(temp_path)
@@ -79,7 +143,7 @@ def extract_colors(image_path_or_url):
 
         return palette
     except Exception as e:
-        print(f"Error extracting colors: {e}")
+        log(f"Error extracting colors: {e}")
         return None
 
 
@@ -96,7 +160,7 @@ def create_color_files(colors):
     elif COLOR_SCHEME == "gradient_reverse":
         return create_gradient_reverse(colors)
     else:
-        print(f"Unknown COLOR_SCHEME: {COLOR_SCHEME}, using dominant_bg")
+        log(f"Unknown COLOR_SCHEME: {COLOR_SCHEME}, using dominant_bg")
         return create_dominant_bg(colors)
 
 
@@ -234,19 +298,19 @@ def set_cavasik_colors(fg_path, bg_path):
 
         # Set foreground colors
         fg_result = interface.set_fg_colors(fg_path)
-        print(f"  set_fg_colors returned: {fg_result}")
+        log(f"  set_fg_colors returned: {fg_result}")
 
         # Set background colors
         bg_result = interface.set_bg_colors(bg_path)
-        print(f"  set_bg_colors returned: {bg_result}")
+        log(f"  set_bg_colors returned: {bg_result}")
 
         if fg_result and bg_result:
-            print("Colors set successfully!")
+            log("Colors set successfully!")
         else:
-            print("Warning: Color setting may have failed")
+            log("Warning: Color setting may have failed")
 
     except Exception as e:
-        print(f"Error setting Cavasik colors: {e}")
+        log(f"Error setting Cavasik colors: {e}")
 
 
 def properties_changed(interface, changed, invalidated):
@@ -255,12 +319,12 @@ def properties_changed(interface, changed, invalidated):
         metadata = changed["Metadata"]
         if "mpris:artUrl" in metadata:
             art_url = metadata["mpris:artUrl"]
-            print(f"New track: {metadata.get('xesam:title', 'Unknown')}")
-            print(f"Cover art: {art_url}")
+            log(f"New track: {metadata.get('xesam:title', 'Unknown')}")
+            log(f"Cover art: {art_url}")
 
             colors = extract_colors(art_url)
             if colors:
-                print(f"Extracted {len(colors)} colors: {colors}")
+                log(f"Extracted {len(colors)} colors: {colors}")
                 fg_path, bg_path = create_color_files(colors)
                 set_cavasik_colors(fg_path, bg_path)
 
@@ -280,21 +344,26 @@ Available color schemes:
   black_bg         - Pure black background (maximum contrast, classic)
   gradient_reverse - Reversed gradient background (unique depth effect)
 
+Configuration:
+  Config file: {config_file}
+  Edit the config file to set your preferred color scheme persistently.
+  Command-line arguments override the config file.
+
 Examples:
-  %(prog)s                          # Use default (dominant_bg)
-  %(prog)s --scheme neon            # Use neon cyberpunk style
-  %(prog)s -s black_bg              # Use black background
+  %(prog)s                          # Use config file setting
+  %(prog)s --scheme neon            # Override config, use neon style
+  %(prog)s -s black_bg              # Override config, use black background
   %(prog)s --list-schemes           # List all available schemes
-        """,
+        """.format(config_file=CONFIG_FILE),
     )
 
     parser.add_argument(
         "-s",
         "--scheme",
         type=str,
-        default="dominant_bg",
+        default=None,
         choices=["dominant_bg", "neon", "black_bg", "gradient_reverse"],
-        help="Color scheme to use (default: dominant_bg)",
+        help="Color scheme to use (overrides config file)",
     )
 
     parser.add_argument(
@@ -330,9 +399,20 @@ Examples:
         print()
         sys.exit(0)
 
-    # Set color scheme from command-line
-    COLOR_SCHEME = args.scheme
-    print(f"Using color scheme: {COLOR_SCHEME}")
+    # Load config file
+    config = load_config()
+
+    # Set color scheme: command-line overrides config file
+    if args.scheme:
+        COLOR_SCHEME = args.scheme
+        log(f"Using color scheme from command-line: {COLOR_SCHEME}")
+    else:
+        COLOR_SCHEME = config.get("color_scheme", "dominant_bg")
+        log(f"Using color scheme from config: {COLOR_SCHEME}")
+
+    log(f"Config file: {CONFIG_FILE}")
+    log(f"Log file: {LOG_FILE}")
+    log(f"Working directory: {WORK_DIR}")
 
     # Monitor all MPRIS players
     bus = dbus.SessionBus()
@@ -343,13 +423,13 @@ Examples:
         path="/org/mpris/MediaPlayer2",
     )
 
-    print("Monitoring for media changes...")
-    print("Press Ctrl+C to stop")
+    log("Monitoring for media changes...")
+    log("Press Ctrl+C to stop")
     loop = GLib.MainLoop()
     try:
         loop.run()
     except KeyboardInterrupt:
-        print("\nStopped monitoring")
+        log("\nStopped monitoring")
         sys.exit(0)
 
 
